@@ -1,11 +1,11 @@
 # Copyright (c) 2011 Prime Focus Film.
-# 
+#
 # All rights reserved.
-# 
+#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
 # are met:
-# 
+#
 # Redistributions of source code must retain the above copyright
 # notice, this list of conditions and the following disclaimer.
 # Redistributions in binary form must reproduce the above copyright
@@ -15,7 +15,7 @@
 # names of its contributors may be used to endorse or promote
 # products derived from this software without specific prior written
 # permission.
-# 
+#
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
 # "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
 # LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
@@ -29,153 +29,123 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 # OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# Author : Antoine P. 
+# Author : Antoine P.
 
-project( Field3DPlugin )
+## CMake compatibility issues: don't modify this, please!
+CMAKE_MINIMUM_REQUIRED( VERSION 2.8)
 
-cmake_minimum_required(VERSION 2.8)
+if(COMMAND cmake_policy)
+     cmake_policy(SET CMP0003 NEW)
+	 cmake_policy(SET CMP0015 NEW)  # to supress relative library directory warnings
+endif(COMMAND cmake_policy)
+
 set( CMAKE_VERBOSE_MAKEFILE on )
 
-# add the .h and .cpp files 
-file(GLOB SOURCES_FILES ./src/*.h ./src/*.cpp)
-add_library( Field3DPlugin SHARED ${SOURCES_FILES} )
 
 
-# Rpath's are so bad, we don't want them ... 
-# Use your LD_LIBRARY_PATH instead
-set ( CMAKE_SKIP_RPATH TRUE )
+FIND_PACKAGE (HDF5)
+
+SET(CMAKE_MODULE_PATH "/redpawFX/dev/gitHub/redpawFX/Field3DMayaPlugin/cmake")
+FIND_PACKAGE (Maya)
+
+if (MAYA_FOUND)
+
+IF ( UNIX AND NOT APPLE )
+	ADD_DEFINITIONS(-DLINUX)
+ENDIF()
+if( APPLE )
+	ADD_DEFINITIONS(-DMAC_PLUGIN)
+	ADD_DEFINITIONS(-DOSMac_)
+	ADD_DEFINITIONS(-DOSMac_MachO)
+ENDIF()
+
+SET(CMAKE_CXX_WARNING_LEVEL 4)
+
+MARK_AS_ADVANCED(CMAKE_BACKWARDS_COMPATIBILITY)
+## allow more human readable "if then else" constructs
+SET( CMAKE_ALLOW_LOOSE_LOOP_CONSTRUCTS TRUE )
+## Use verbose make file
+SET ( CMAKE_VERBOSE_MAKEFILE TRUE )
 
 
-# -D_BOOL -DREQUIRE_IOSTREAM seems to be mandatory when
-# using Maya's include files
-#set ( CMAKE_CXX_FLAGS "-Wno-deprecated -D_BOOL -DREQUIRE_IOSTREAM -DLINUX" ) 
-set ( CMAKE_CXX_FLAGS "-Wl,-soname,libField3DPlugin.so -D_BOOL -DREQUIRE_IOSTREAM -DLINUX" )
+set (PLUGIN_NAME "field3DCache")
+set (CMAKE_PROJECT_NAME "field3DCache")
+
+if(APPLE)
+	set (PLUGIN_SUFFIX ".bundle")
+	set (CMAKE_SHARED_LIBRARY_SUFFIX ".bundle")
+	set (SUFFIX ".bundle")
+ENDIF()
+
+if(WIN32)
+	set (PLUGIN_SUFFIX ".mll")
+	set (CMAKE_SHARED_LIBRARY_SUFFIX ".mll")
+	set (SUFFIX ".mll")
+ENDIF()
+
+if (UNIX)
+	set (PLUGIN_SUFFIX ".so")
+	set (CMAKE_SHARED_LIBRARY_SUFFIX ".so")
+	set (SUFFIX ".so")
+ENDIF()
+
+set (STD_INCLUDES "." ".." "/usr/X11R6/include" "/usr/include" "/usr/include/CC")
+set (STD_LIB "/usr/lib/" "/usr/lib64")
 
 
-# set the build type to release by default
-if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE Release CACHE STRING
-      "Choose the type of build, options are: None Debug Release RelWithDebInfo MinSizeRel."
-      FORCE)
-endif(NOT CMAKE_BUILD_TYPE)
+add_definitions(-D_BOOL)
+add_definitions(-DREQUIRE_IOSTREAM)
+if (!WIN32)
+	add_definitions(-fPIC)
+	add_definitions(-O3)
+	add_definitions(-pthread)
+endif()
 
-set ( LINK_TYPE static CACHE STRING
-      "Choose the type of link, options are: static or dynamic ( static is the default )."
-      )
+FILE(GLOB field3DCPP "src/*.cpp")
+FILE(GLOB field3DINCLUDES "/src*.h")
 
-#--------------------------------------------------------------------------
-#   add_custom_library ()
-#
-#   description:
-#      This function locates and links against third party libraries  
-#      ( Maya, Ilmbase, Hdf5 ). Libraries are supposed to have a root 
-#      directory with an "include" and "lib" directory inside.
-#
-#   usage : 
-#       add_custom_library ( NAME INCLUDE_FILE LIBRARIES )
-#         NAME         : library name
-#         INCLUDE_FILE : the name of any header file in 
-#                        library's include directory
-#         LIBRARIES    : list of shared library to link against 
-#                        ( without prefix, nor suffix : libAA.so -> AA )
-#
-#   Example :
-#      add_custom_library ( IlmBase OpenEXR/Iex.h   IlmThread Iex Imath Half )
-#----------------------------------------------------------------------------
- 
+SET(TARGET_H ${field3DINCLUDES})
+SET(TARGET_SRC ${field3DCPP})
 
-function( add_custom_library NAME INCLUDE_FILE IS_STATIC LIBRARIES )
-	
-	string(TOUPPER ${NAME} LIB_NAME)
-	
-	# look for the root path of the library
-	find_path ( ${LIB_NAME}_ROOT_DIR PATHS 
-		include
-		DOC "${NAME} root directory" 
-		NO_DEFAULT_PATH 
-	)
-	
-	# check if the root path was found
-	if( NOT ${LIB_NAME}_ROOT_DIR )
-		message ( SEND_ERROR "Please set ${LIB_NAME}_ROOT_DIR to the ${NAME} root directory" )
-	endif()
-	
-	# look up the include directory automatically
-	set (${LIB_NAME}_INCLUDE_DIR ${LIB_NAME}_INCLUDE_DIR-NOTFOUND )
-	find_path( ${LIB_NAME}_INCLUDE_DIR 
-		NAMES ${INCLUDE_FILE}
-		PATHS ${${LIB_NAME}_ROOT_DIR}/include/ 
-	    DOC "Path to the ${NAME} include directory ( containing ${INCLUDE_FILE} )."
-	) 
-	
-	# check if include dir was found
-	if( NOT ${LIB_NAME}_INCLUDE_DIR )
-		if( ${LIB_NAME}_ROOT_DIR )
-			message ( SEND_ERROR "No ${NAME} include directory was found in ${${LIB_NAME}_ROOT_DIR} , Check your ${LIB_NAME}_ROOT_DIR again." )
-		endif()
-	else( NOT ${LIB_NAME}_INCLUDE_DIR )
-		include_directories( ${${LIB_NAME}_INCLUDE_DIR} )
-	endif()
-	
-	mark_as_advanced(${LIB_NAME}_INCLUDE_DIR) 	
+SET(MAYA_LIBS OpenMaya Foundation OpenMayaAnim OpenMayaFX OpenMayaUI OpenMayaRender)
 
+INCLUDE_DIRECTORIES (${STD_INCLUDES})
+LINK_DIRECTORIES( ${STD_LIB}  )
 
-	# adding libraries specified in LIBRARIES argument
-	foreach ( LIB ${LIBRARIES} )
-	
-		# clean previous value
-		set (${LIB}_LIBRARY ${LIB}_LIBRARY-NOTFOUND )
-	
-		# look for the library
-		if ( ${IS_STATIC} MATCHES "static"  )
-			set (LIB lib${LIB}.a)
-		endif()
-		
-		find_library( ${LIB}_LIBRARY 
-			NAMES ${LIB}
-			PATHS ${${LIB_NAME}_ROOT_DIR}/lib
-			DOC "${LIB} library."
-		)
-		
-		mark_as_advanced(${LIB}_LIBRARY)
-		
-		# check if the library was found
-		if( NOT ${LIB}_LIBRARY )
-			if( ${LIB_NAME}_ROOT_DIR )
-				message ( SEND_ERROR "${LIB} library directory was not found in ${${LIB_NAME}_ROOT_DIR}/lib , Check your ${LIB_NAME}_ROOT_DIR or again." )
-			endif()
-		else( NOT ${LIB}_LIBRARY )
-				target_link_libraries(Field3DPlugin ${${LIB}_LIBRARY} )
-		endif()
-	
-	endforeach()
-	
-endfunction(add_custom_library)
+# use system installed versions of these instead
+#add_custom_library ( HDF5    hdf5.h          ${LINK_TYPE}  "hdf5"      )
+INCLUDE_DIRECTORIES( "/redpawFX/release/field3d/1.4.0/include" )
+INCLUDE_DIRECTORIES( ${HDF5_INCLUDE_DIRS} )
+INCLUDE_DIRECTORIES( ${MAYA_INCLUDE_DIRS} )
 
+SET(FIELD3DLIBS "/redpawFX/release/field3d/1.4.0/lib" )
+LINK_DIRECTORIES( ${MAYA_LIBRARY_DIR} ${FIELD3DLIBS} )
 
-#----------------------------------------------------------------------------
+message(STATUS "MAYA LIB DIR: " ${MAYA_LIBRARY_DIR})
 
+ADD_LIBRARY(${PLUGIN_NAME} SHARED ${TARGET_H} ${TARGET_SRC})
+set_target_properties(${PLUGIN_NAME} PROPERTIES PREFIX "")
 
-# add libraries : WARNING add Field3D first !!
-# don't forget the quotes when passing a list
-add_custom_library ( Field3D Field3D/Field.h ${LINK_TYPE}  "Field3D"    )
-add_custom_library ( Maya    maya/MFn.h      FALSE "OpenMaya;OpenMayaFX;OpenMayaUI;OpenMayaAnim" )
-add_custom_library ( HDF5    hdf5.h          ${LINK_TYPE}  "hdf5"      ) 
-add_custom_library ( IlmBase OpenEXR/Iex.h   ${LINK_TYPE}  "IlmThread;Iex;Imath;Half" ) 
+## need these to build for windows or else the plugin won't load
+IF(WIN32)
+	set_target_properties(${PLUGIN_NAME} PROPERTIES LINK_FLAGS "/export:initializePlugin /export:uninitializePlugin")
+ENDIF()
+
+SET(MAYA_LIBS OpenMaya Foundation OpenMayaAnim OpenMayaFX OpenMayaUI OpenMayaRender)
+TARGET_LINK_LIBRARIES(${PLUGIN_NAME} ${MAYA_LIBS} Field3D hdf5 IlmThread Iex Imath Half)
 
 
 # Hack:
 # We must add ilmbase/OpenEXR in include directories as well
-# because ilmbase reference OpenEXR header as 
-#       #include "Iex.h" 
-# instead of 
-#       #include "OpenEXR/Iex.h" 
+# because ilmbase reference OpenEXR header as
+#       #include "Iex.h"
+# instead of
+#       #include "OpenEXR/Iex.h"
 
-if( ILMBASE_ROOT_DIR )
-	include_directories( ${ILMBASE_ROOT_DIR}/include/OpenEXR )
-endif()
-
-		
+#if( ILMBASE_ROOT_DIR )
+include_directories( /usr/include/OpenEXR )
+#endif()
 
 
+ENDIF(MAYA_FOUND)
 
